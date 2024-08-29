@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.zw";
+option java_outer_classname = "GameGrpcProto";
+
+package game.api;
+
+service GameGrpc {
+    rpc sendData (GameRequest) returns (GameResponse) {}
+}
+
+message GameRequest {
+    int32 opcode = 1;
+    string payload = 2;
+}
+
+message GameResponse {
+    int32 opcode = 1;
+    string data = 2;
+}

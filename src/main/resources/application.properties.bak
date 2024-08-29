@@ -1,0 +1,27 @@
+## PORT SERVER
+quarkus.grpc.server.port=9090
+
+## DB COCKROACHDB
+quarkus.datasource.db-kind=postgresql
+quarkus.datasource.username=zw
+quarkus.datasource.password=123456
+quarkus.datasource.jdbc.url=jdbc:postgresql://localhost:26257/test1?useSSL=false&serverTimezone=UTC&useLegacyDatetimeCode=false
+quarkus.datasource.jdbc.max-size=16
+quarkus.hibernate-orm.database.generation=update
+
+## JWT
+jwt.publickey=abc
+
+## Redis
+quarkus.redisson.single-server-config.address=redis://localhost:6379
+quarkus.redisson.single-server-config.password=ZUrqu7N0g2W2Sw5p
+quarkus.redisson.single-server-config.database=10
+quarkus.redisson.threads=16
+quarkus.redisson.netty-threads=32
+
+## docker
+quarkus.container-image.build=true  
+quarkus.container-image.group=io.zw
+quarkus.container-image.name=game
+quarkus.container-image.tag=latest
+quarkus.jib.ports=9090
