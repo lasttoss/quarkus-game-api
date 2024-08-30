@@ -1,6 +1,7 @@
 package io.zw.game.api.services;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import io.zw.game.api.constants.ApiErrorEnum;
 import io.zw.game.api.constants.GameEnum;
 import io.zw.game.api.constants.RequestConstants;
@@ -8,6 +9,7 @@ import io.zw.game.api.dto.config.OpenFruitRateConfig;
 import io.zw.game.api.dto.config.PickingFruitCountdownConfig;
 import io.zw.game.api.dto.config.SeasonConfig;
 import io.zw.game.api.dto.config.SeedConfig;
+import io.zw.game.api.dto.logger.LogEvent;
 import io.zw.game.api.dto.mapper.UserPlantDTO;
 import io.zw.game.api.dto.mapper.UserWateringCanDTO;
 import io.zw.game.api.dto.request.ProtectResourceRequest;
@@ -16,6 +18,7 @@ import io.zw.game.api.dto.request.SprayWaterRequest;
 import io.zw.game.api.dto.response.ErrorDTO;
 import io.zw.game.api.dto.response.ResultDTO;
 import io.zw.game.api.dto.response.UserPlantInfoDTO;
+import io.zw.game.api.logs.EventLogger;
 import io.zw.game.api.mappers.UserPlantMapper;
 import io.zw.game.api.mappers.UserWateringCanMapper;
 import io.zw.game.api.models.ItemModel;
@@ -137,6 +140,14 @@ public class UserPlantService {
             return response;
         }
 
+        UserInventoryModel userInventoryModel = userInventoryRepository.findByUserIdAndItemId(userId, request.getItemId());
+        if (userInventoryModel == null || userInventoryModel.getQuantity() <= 0) {
+            ErrorDTO error = new ErrorDTO(ApiErrorEnum.NOT_ENOUGH_QUANTITY_TO_SOW_SEED);
+            response.setStatus(GrpcStatus.ABORTED.code);
+            response.setError(error);
+            return response;
+        }
+
         SeedConfig seedConfig = configService.getListSeedConfig();
         if (seedConfig == null) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.INVALID_RESOURCE);
@@ -164,8 +175,18 @@ public class UserPlantService {
         UserWateringCanDTO userWateringCanDTO = userWateringCanMapper.toDTO(userWateringCanModel);
         UserPlantInfoDTO info = new UserPlantInfoDTO(userPlantDTO, userWateringCanDTO);
 
+        int oldValue = userInventoryModel.getQuantity();
+        userInventoryModel.use(1);
+        userInventoryRepository.persist(userInventoryModel);
+        int newValue = userInventoryModel.getQuantity();
+
         response.setStatus(GrpcStatus.OK.code);
         response.setData(info);
+
+        JsonObject data = new JsonObject();
+        data.addProperty("oldValue", oldValue);
+        data.addProperty("newValue", newValue);
+        EventLogger.writeToLog(new LogEvent(userId, GameEnum.EventLoggerEnum.SOW_SEED.getValue(), gson.toJson(data), gson.toJson(userPlantModel)));
         return response;
     }
 
@@ -180,6 +201,20 @@ public class UserPlantService {
             request = gson.fromJson(payload, SprayWaterRequest.class);
         } catch (Exception e) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.INVALID_REQUEST);
+            response.setStatus(GrpcStatus.ABORTED.code);
+            response.setError(error);
+            return response;
+        }
+
+        if (userWateringCanModel == null) {
+            ErrorDTO error = new ErrorDTO(ApiErrorEnum.ITEM_NOT_FOUND);
+            response.setStatus(GrpcStatus.ABORTED.code);
+            response.setError(error);
+            return response;
+        }
+
+        if (userWateringCanModel.getQuantity() < request.getQuantity()) {
+            ErrorDTO error = new ErrorDTO(ApiErrorEnum.NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);
             return response;
@@ -231,6 +266,11 @@ public class UserPlantService {
         userPlantModel.addExp(request.getQuantity(), seedConfig.getData().get(userPlantModel.getPlantId() - 1), pickingFruitCountdownConfig.getData());
         userPlantRepository.persist(userPlantModel);
 
+        int oldValue = userWateringCanModel.getQuantity();
+        userWateringCanModel.use(request.getQuantity());
+        userWateringCanRepository.persist(userWateringCanModel);
+        int newValue = userWateringCanModel.getQuantity();
+
         UserPlantDTO userPlantInfoDTO = userPlantMapper.toDTO(userPlantModel);
         var maxIndex = seedConfig.getData().get(userPlantModel.getPlantId() - 1).getRequiredExp().size() - 1;
         userPlantInfoDTO.setMaxExp(seedConfig.getData().get(userPlantModel.getPlantId() - 1).getRequiredExp().get(maxIndex));
@@ -242,6 +282,15 @@ public class UserPlantService {
 
         response.setStatus(GrpcStatus.OK.code);
         response.setData(info);
+
+        JsonObject data = new JsonObject();
+        data.addProperty("oldValue", oldValue);
+        data.addProperty("newValue", newValue);
+
+        JsonObject metadata = new JsonObject();
+        metadata.addProperty("plant", gson.toJson(userPlantModel));
+        metadata.addProperty("water", gson.toJson(userWateringCanModel));
+        EventLogger.writeToLog(new LogEvent(userId, GameEnum.EventLoggerEnum.SPRAY_WATER.getValue(), gson.toJson(data), gson.toJson(metadata)));
         return response;
     }
 
@@ -330,6 +379,13 @@ public class UserPlantService {
 
         response.setStatus(GrpcStatus.OK.code);
         response.setData(info);
+
+        JsonObject data = new JsonObject();
+
+        JsonObject metadata = new JsonObject();
+        metadata.addProperty("plant", gson.toJson(userPlantModel));
+        metadata.addProperty("inventory", gson.toJson(userInventory));
+        EventLogger.writeToLog(new LogEvent(userId, GameEnum.EventLoggerEnum.PICKING_FRUIT.getValue(), gson.toJson(data), gson.toJson(metadata)));
         return response;
     }
 

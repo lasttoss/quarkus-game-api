@@ -67,4 +67,14 @@ public class GameEnum {
             this.value = value;
         }
     }
+
+    @Getter
+    public enum EventLoggerEnum {
+        SOW_SEED("SOW_SEED"),SPRAY_WATER("SPRAY_WATER"),PROTECT_RESOURCE("PROTECT_RESOURCE"),PICKING_FRUIT("PICKING_FRUIT");
+
+        private String value;
+        EventLoggerEnum(String value) {
+            this.value = value;
+        }
+    }
 }

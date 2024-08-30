@@ -50,4 +50,10 @@ public class UserInventoryModel {
         this.quantity += quantity;
         this.updatedAt = DateTime.now().toDate();
     }
+
+    public void use(int quantity) {
+        this.quantity -= quantity;
+        if (this.quantity < 0) this.quantity = 0;
+        this.updatedAt = DateTime.now().toDate();
+    }
 }

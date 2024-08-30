@@ -31,13 +31,20 @@ public class UserWateringCanModel {
     @Column(name = "updated_at", nullable = false, columnDefinition = "timestamp default current_timestamp")
     private Date updatedAt;
 
-    public UserWateringCanModel() {}
+    public UserWateringCanModel() {
+    }
 
     public UserWateringCanModel(String userId) {
         this.userId = userId;
         this.quantity = 0;
         this.nextTimeToReset = 0;
         this.createdAt = DateTime.now().toDate();
+        this.updatedAt = DateTime.now().toDate();
+    }
+
+    public void use(int quantity) {
+        this.quantity -= quantity;
+        if (this.quantity < 0) this.quantity = 0;
         this.updatedAt = DateTime.now().toDate();
     }
 }
