@@ -10,12 +10,14 @@ quarkus.datasource.jdbc.max-size=16
 quarkus.hibernate-orm.database.generation=update
 
 ## JWT
-jwt.publickey=abc
+mp.jwt.verify.publickey.location=certs/publickey.pem
+smallrye.jwt.sign.key.location=certs/privatekey.pem
+smallrye.jwt.always-check-authorization=true
 
 ## Redis
 quarkus.redisson.single-server-config.address=redis://localhost:6379
-quarkus.redisson.single-server-config.password=ZUrqu7N0g2W2Sw5p
-quarkus.redisson.single-server-config.database=10
+quarkus.redisson.single-server-config.password=123456
+quarkus.redisson.single-server-config.database=1
 quarkus.redisson.threads=16
 quarkus.redisson.netty-threads=32
 

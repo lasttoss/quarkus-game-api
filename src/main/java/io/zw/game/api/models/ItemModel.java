@@ -27,10 +27,10 @@ public class ItemModel {
     @Column(name = "image_url", nullable = false, columnDefinition = "varchar(255) default 'a'")
     private String imageUrl;
 
-    @Column(name = "resource_id", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "resource_id", nullable = false, columnDefinition = "int2")
     private int resourceId;
 
-    @Column(name = "resource_type", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "resource_type", nullable = false, columnDefinition = "int2")
     private int resourceType;
 
     @Column(name = "created_at", nullable = false, columnDefinition = "timestamp default current_timestamp")

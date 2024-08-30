@@ -19,10 +19,10 @@ public class UserWateringCanModel {
     @Column(name = "user_id", nullable = false)
     private String userId;
 
-    @Column(name = "quantity", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "quantity", nullable = false, columnDefinition = "int2")
     private int quantity;
 
-    @Column(name = "next_time_to_reset", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "next_time_to_reset", nullable = false, columnDefinition = "int")
     private int nextTimeToReset;
 
     @Column(name = "created_at", nullable = false, columnDefinition = "timestamp default current_timestamp")

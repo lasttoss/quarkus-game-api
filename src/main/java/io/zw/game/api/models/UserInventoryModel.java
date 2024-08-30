@@ -22,10 +22,10 @@ public class UserInventoryModel {
     @Column(name = "item_id", nullable = false, columnDefinition = "varchar(255)")
     private String itemId;
 
-    @Column(name = "quantity", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "quantity", nullable = false, columnDefinition = "int2")
     private int quantity;
 
-    @Column(name = "season_id", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "season_id", nullable = false, columnDefinition = "int2")
     private int seasonId;
 
     @Column(name = "created_at", nullable = false, columnDefinition = "timestamp default current_timestamp")

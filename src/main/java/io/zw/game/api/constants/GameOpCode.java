@@ -2,6 +2,8 @@ package io.zw.game.api.constants;
 
 public class GameOpCode {
 
+    public static final int PING = 0;
+
     // USER INFO 100 -> 199
     public static final int USER_INFO = 100;
 

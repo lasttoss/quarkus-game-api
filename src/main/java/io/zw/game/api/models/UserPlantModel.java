@@ -22,16 +22,16 @@ public class UserPlantModel {
     @Column(name = "user_id", nullable = false)
     private String userId;
 
-    @Column(name = "plant_id", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "plant_id", nullable = false, columnDefinition = "int")
     private int plantId;
 
-    @Column(name = "status", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "status", nullable = false, columnDefinition = "int2")
     private int status;
 
-    @Column(name = "current_exp", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "current_exp", nullable = false, columnDefinition = "int8")
     private int currentExp;
 
-    @Column(name = "next_time_to_pick", nullable = false, columnDefinition = "int8 default 0")
+    @Column(name = "next_time_to_pick", nullable = false, columnDefinition = "int")
     private long nextTimeToPick;
 
     @Column(name = "protected_gem", nullable = false, columnDefinition = "boolean default false")

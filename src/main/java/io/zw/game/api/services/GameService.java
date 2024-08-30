@@ -27,6 +27,9 @@ public class GameService implements GameGrpc {
         String userId = Principal.CLIENT_ID_CONTEXT_KEY.get();
         String payload = request.getPayload();
         switch (request.getOpcode()) {
+            case GameOpCode.PING:{
+                return Uni.createFrom().item("Send Data").map(msg -> GameResponse.newBuilder().setOpcode(GameOpCode.PING).setData("PONG").build());
+            }
             case GameOpCode
                     .PLANT_PROGRESS_INFO: {
                 ResultDTO result = userPlantService.getInfo(userId);
