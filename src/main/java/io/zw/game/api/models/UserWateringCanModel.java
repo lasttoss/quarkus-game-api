@@ -34,9 +34,15 @@ public class UserWateringCanModel {
     public UserWateringCanModel() {
     }
 
+    /**
+     * A new player's can arrives full, as it does in the plugin: findUserWateringCan hands out a can
+     * holding MAX_WATERING_CAN and sets the anchor one interval ahead, so the first drop after that is
+     * five minutes away. Starting empty here would have been a second rule wearing the first one's name
+     * - and until the refill existed, starting empty plus nothing to fill it was no watering at all.
+     */
     public UserWateringCanModel(String userId) {
         this.userId = userId;
-        this.quantity = 0;
+        this.quantity = MAX_WATER;
         this.nextTimeToReset = 0;
         this.createdAt = DateTime.now().toDate();
         this.updatedAt = DateTime.now().toDate();
@@ -46,11 +52,16 @@ public class UserWateringCanModel {
     public static final int SECONDS_PER_WATER = 5 * 60;
 
     /**
-     * The can fills to fifty and stops. Nothing above this is ever added, and a can that is somehow
+     * The can fills to twenty and stops. Nothing above this is ever added, and a can that is somehow
      * already above it - a store that sells water could do that - is left where it is rather than
      * brought down, because this rule is about not giving more.
+     *
+     * Twenty is not a guess: the plugin that runs the live game sets its can to MAX_WATERING_CAN, which
+     * is 20, in findUserWateringCan, and five minutes a drop, which is the same constant this class
+     * calls SECONDS_PER_WATER. This was fifty for one commit, on an approximate answer; the sibling
+     * implementation is better evidence than an approximation.
      */
-    public static final int MAX_WATER = 50;
+    public static final int MAX_WATER = 20;
 
     /**
      * Water arrives with the clock rather than from anywhere else: one every

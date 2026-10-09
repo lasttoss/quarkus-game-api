@@ -12,15 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class UserWateringCanModelTest {
 
-    @Test
-    void aNewCanStartsEmptyAndUnrefilled() {
-        UserWateringCanModel can = new UserWateringCanModel("user-1");
-
-        assertEquals("user-1", can.getUserId());
-        assertEquals(0, can.getQuantity());
-        assertEquals(0, can.getNextTimeToReset());
-        assertNotNull(can.getCreatedAt());
-    }
 
     @Test
     void useGoesDownAndStopsAtZero() {
@@ -56,6 +47,7 @@ class UserWateringCanModelTest {
     @Test
     void refillGivesOneWaterEveryFiveMinutes() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
+        can.setQuantity(0); // empty, or the full can would absorb the drops
 
         assertEquals(0, can.refill(1_000), "a fresh can starts counting, it does not pour");
         assertEquals(1_000, can.getNextTimeToReset());
@@ -67,6 +59,7 @@ class UserWateringCanModelTest {
     @Test
     void refillKeepsTheTimeThatWasNotEnoughForAWater() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
+        can.setQuantity(0); // empty, or the full can would absorb the drops
         can.refill(1_000);
 
         assertEquals(1, can.refill(1_300));
@@ -80,6 +73,7 @@ class UserWateringCanModelTest {
     @Test
     void refillHandsOverEverythingTheClockOwed() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
+        can.setQuantity(0); // empty, or the full can would absorb the drops
         can.refill(1_000);
 
         assertEquals(12, can.refill(1_000 + 3_600), "an hour away is twelve water");
@@ -100,10 +94,21 @@ class UserWateringCanModelTest {
     @Test
     void aCanThatHasNeverBeenRefilledIsNotGivenMillionsOfWater() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
+        can.setQuantity(0);
 
-        assertEquals(0, can.refill(1_700_000_000));
+        assertEquals(0, can.refill(1_700_000_000), "a zero anchor is a can that has not started, not a long wait");
         assertEquals(0, can.getQuantity());
         assertEquals(1_700_000_000, can.getNextTimeToReset());
+    }
+
+    @Test
+    void aNewCanArrivesFull() {
+        UserWateringCanModel can = new UserWateringCanModel("user-1");
+
+        assertEquals(UserWateringCanModel.MAX_WATER, can.getQuantity());
+        assertEquals(0, can.getNextTimeToReset(), "the anchor starts the clock on the first refill");
+        assertEquals(0, can.refill(1_000), "there is no room for a drop yet");
+        assertEquals(1_000, can.getNextTimeToReset());
     }
 
     /**
@@ -114,58 +119,59 @@ class UserWateringCanModelTest {
     @Test
     void refillStopsAtTheCeiling() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
-        can.setQuantity(50);
+        can.setQuantity(UserWateringCanModel.MAX_WATER);
         can.setNextTimeToReset(1_000);
 
         assertEquals(0, can.refill(1_000 + 3_600), "a full can was topped up");
-        assertEquals(50, can.getQuantity());
+        assertEquals(UserWateringCanModel.MAX_WATER, can.getQuantity());
         assertEquals(1_000 + 3_600, can.getNextTimeToReset(), "a full can starts its clock again");
     }
 
     @Test
     void refillFillsUpToTheCeilingAndNoFurther() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
-        can.setQuantity(49);
+        can.setQuantity(19);
         can.setNextTimeToReset(1_000);
 
         assertEquals(1, can.refill(1_000 + 3_600), "an hour owed twelve water, only one fit");
-        assertEquals(50, can.getQuantity());
+        assertEquals(UserWateringCanModel.MAX_WATER, can.getQuantity());
         assertEquals(1_000 + 3_600, can.getNextTimeToReset());
     }
 
     @Test
     void anHourSpentFullIsNotPaidOutLater() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
-        can.setQuantity(50);
+        can.setQuantity(UserWateringCanModel.MAX_WATER);
         can.setNextTimeToReset(1_000);
         can.refill(1_000 + 3_600); // full, the clock restarts
 
         can.use(1);
-        assertEquals(49, can.getQuantity());
+        assertEquals(UserWateringCanModel.MAX_WATER - 1, can.getQuantity());
 
         assertEquals(0, can.refill(1_000 + 3_660), "a minute after being full is a minute");
         assertEquals(1, can.refill(1_000 + 3_900), "five minutes after being full is a water");
-        assertEquals(50, can.getQuantity());
+        assertEquals(UserWateringCanModel.MAX_WATER, can.getQuantity());
     }
 
     @Test
     void aCanAlreadyAboveTheCeilingIsLeftWhereItIs() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
-        can.setQuantity(60); // nothing in this repository can do this; a store elsewhere might
+        can.setQuantity(UserWateringCanModel.MAX_WATER + 40); // nothing here can do this; a store elsewhere might
         can.setNextTimeToReset(1_000);
 
         assertEquals(0, can.refill(1_000 + 3_600));
-        assertEquals(60, can.getQuantity(), "the rule is about not giving more, not about taking away");
+        assertEquals(UserWateringCanModel.MAX_WATER + 40, can.getQuantity(),
+                "the rule is about not giving more, not about taking away");
     }
 
     @Test
     void refillStillWorksBelowTheCeiling() {
         UserWateringCanModel can = new UserWateringCanModel("user-1");
-        can.setQuantity(40);
+        can.setQuantity(10);
         can.setNextTimeToReset(1_000);
 
         assertEquals(2, can.refill(1_000 + 600));
-        assertEquals(42, can.getQuantity());
+        assertEquals(12, can.getQuantity());
         assertEquals(1_600, can.getNextTimeToReset(), "the anchor moves by what was handed over");
     }
 }

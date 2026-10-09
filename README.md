@@ -142,17 +142,17 @@ make chart     # helm lint --strict + helm template
 | class | lines |
 |---|---|
 | `UserPlantService` | 90.2% (266/295) |
-| `GameRequest.Builder` | 0.0% (0/113) |
-| `GameResponse.Builder` | 0.0% (0/113) |
-| `GameResponse` | 0.0% (0/96) |
-| `GameRequest` | 0.0% (0/96) |
+| `GameRequest.Builder` | 23.0% (26/113) |
+| `GameResponse.Builder` | 23.0% (26/113) |
+| `GameResponse` | 21.9% (21/96) |
+| `GameRequest` | 21.9% (21/96) |
 | `UserPlantModel` | 95.2% (40/42) |
-| `UserWateringCanModel` | 92.7% (38/41) |
+| `UserWateringCanModel` | 90.2% (37/41) |
 | `ConfigService` | 100.0% (38/38) |
 | `UserInventoryModel` | 80.0% (20/25) |
 | `UserPlantMapperImpl` | 0.0% (0/25) |
 | `ApiErrorEnum` | 95.8% (23/24) |
-| **total** | **50.0%** (654/1309 lines, 13.7% of 949 branches) |
+| `GameService` | 100.0% (21/21) |
 
 Branch coverage is the lower number because most of what is left uncovered is branchier than what is
 covered: `GameService` and the gRPC layer, whose opcode switch is the next thing to take.
@@ -200,9 +200,12 @@ calls it too, because that is where the numbers a client displays come from, and
 before the check on the can rather than after - a player away for ten minutes arrives holding the two
 water that came back with the clock, and the check has to see them.
 
-Water stops at fifty. `MAX_WATER` is the ceiling, nothing is ever added above it, and a can that is
-somehow already above it - a store that sells water could do that - is left where it is, because the rule
-is about not giving more rather than about taking away. If fifty is not the number, it is one constant.
+Water stops at twenty, and a new can arrives full. Both halves come from the plugin that runs the live
+game rather than from this repository's own history: `findUserWateringCan` hands out a can holding
+`MAX_WATERING_CAN`, which is 20, and sets its anchor one interval ahead, and
+`EXPIRE_TIME_GET_NEXT_A_DROP_OF_WATER` is `5 * 60` - the same five minutes as `SECONDS_PER_WATER` here.
+This was twenty made fifty for one commit, on an approximate answer; the sibling implementation is better
+evidence than an approximation, and the constant is one line either way.
 A full can also does not bank time: the anchor moves to now when the can is full or when the call filled
 it, so an hour spent at fifty is an hour nobody gets back, and the first water spent after that starts a
 fresh five minutes. Leaving the anchor behind instead would pay out the intervals that arrived while

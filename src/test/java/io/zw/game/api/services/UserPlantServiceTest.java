@@ -431,6 +431,27 @@ class UserPlantServiceTest {
         lenient().when(userWateringCanMapper.toDTO(any())).thenReturn(new UserWateringCanDTO());
     }
 
+    /**
+     * A new player's can arrives full, which is the half of the rule the plugin gets from
+     * findUserWateringCan: the can is handed over holding MAX_WATERING_CAN. Empty was what this model
+     * used to do, and before the refill existed an empty can meant nothing could ever be watered.
+     */
+    @Test
+    void aNewPlayersCanIsFullAndCanWaterStraightAway() {
+        UserWateringCanModel can = new UserWateringCanModel(USER_ID);
+        assertEquals(UserWateringCanModel.MAX_WATER, can.getQuantity());
+
+        when(userPlantRepository.findByUserId(USER_ID)).thenReturn(growingPlant());
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(can);
+        when(configService.getListSeedConfig()).thenReturn(seedConfigFor(1));
+        when(configService.getPickingFruitCountdownConfig()).thenReturn(countdownConfig(60));
+        lenient().when(userPlantMapper.toDTO(any())).thenReturn(new UserPlantDTO());
+        lenient().when(userWateringCanMapper.toDTO(any())).thenReturn(new UserWateringCanDTO());
+
+        assertEquals(GrpcStatus.OK.code, service.sprayWater(USER_ID, "{\"quantity\":1}").getStatus());
+        assertEquals(UserWateringCanModel.MAX_WATER - 1, can.getQuantity());
+    }
+
     @Test
     void sprayWaterRefusesAPayloadThatIsNotJson() {
         assertRefused(service.sprayWater(USER_ID, "{{{"), ApiErrorEnum.INVALID_REQUEST);
