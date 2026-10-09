@@ -83,3 +83,38 @@ grpcurl -plaintext -d '{"opcode":0,"payload":"{}"}' localhost:9090 game.api.Game
 ## License
 
 MIT - see [LICENSE](LICENSE).
+
+## The interface as a picture
+
+```mermaid
+%% Source for docs/diagrams/one-rpc-many-opcodes.html
+%% One gRPC method carries every game action; the server decides what the clock says.
+flowchart LR
+  C["game client"] -->|"gRPC :9090<br/>{opcode, payload}"| JI{"JWT interceptor<br/>everything but auth"}
+  JI -->|"valid token"| D["opcode dispatch"]
+  JI -.->|"no token"| X["refused"]
+  D --> O100["100 USER_INFO"]
+  D --> O200["200 PLANT_INFO<br/>countdowns"]
+  D --> O201["201 sow"]
+  D --> O202["202 picking"]
+  D --> O203["203 spray water"]
+  D --> O204["204 protect resource"]
+  O200 --> SV["game service<br/>owns the clock"]
+  SV --> H["Hibernate"] --> PG[("PostgreSQL")]
+  SV <--> RD[("Redis cache")]
+  classDef gate fill:#eef5ef,stroke:#1a6b3c,stroke-width:2px;
+  class JI, SV gate;
+```
+
+One RPC, and an opcode inside it, is the whole client-facing surface: 100 for the account, 200 for the plot
+state and its countdowns, and 201-204 for the four verbs. A growing REST surface would be a new route, a
+version and a DTO per action; this is the same dispatch with one shape to keep.
+
+The half of the picture that is about authority is the clock. A harvest a client could time itself is a
+harvest a client can fake, so the server stores when a plot was planted and answers whether it is ready —
+countdowns are facts it owns, not local timers it is trusted to be told about. PostgreSQL keeps what must
+survive a restart; Redis holds what may be recomputed, which is exactly the plot a client polls while it
+waits.
+
+`docs/diagrams/one-rpc-many-opcodes.mmd` is the Mermaid source; `make diagram` exports a PNG if a browser
+is present.

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>One RPC, many opcodes — the server decides what the clock says</title>
+<style>
+  :root { --ink:#151412; --paper:#f7f4ee; --rule:#cfc7b8; --red:#b3261e; --green:#1a6b3c; --amber:#8a5a00; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font:16px/1.5 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+  .sheet { max-width:1080px; margin:0 auto; padding:56px 40px 72px; }
+  .kicker { font:600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.14em;
+            text-transform:uppercase; color:var(--amber); }
+  h1 { font-size:38px; line-height:1.15; margin:.35em 0 .2em; letter-spacing:-.01em; }
+  .dek { font-size:19px; color:#463f36; max-width:76ch; margin:0 0 8px; }
+  .meta { font:12px/1.6 ui-monospace, Menlo, monospace; color:#6b6357; border-top:1px solid var(--rule);
+          padding-top:10px; margin-top:22px; }
+  svg { display:block; width:100%; height:auto; margin:34px 0 0; }
+  .pairs { display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px; margin-top:34px; }
+  .card { border-left:4px solid var(--ink); padding:14px 0 14px 18px; background:#fffdf8; }
+  .card b { display:block; font-size:12px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:6px; }
+  .card p { margin:0; font-size:16px; } .card p + p { margin-top:7px; }
+  footer { margin-top:38px; font:12px/1.7 ui-monospace, Menlo, monospace; color:#6b6357;
+           border-top:1px solid var(--rule); padding-top:12px; }
+  text { font-family:"Iowan Old Style", Palatino, Georgia, serif; }
+  .mono { font-family:ui-monospace, Menlo, monospace; }
+</style>
+<div class="sheet">
+  <div class="kicker">Interface · quarkus-game-api</div>
+  <h1>One RPC, many opcodes — the server decides what the clock says</h1>
+  <p class="dek">A server-authoritative game backend in Quarkus where every action goes through a single
+    gRPC method carrying an opcode. The interface stops growing, and the timing that decides a harvest
+    stops being something a client can claim.</p>
+  <div class="meta">gRPC :9090 · one sendData RPC: {opcode, payload} · JWT interceptor on everything but
+    auth · opcodes 100 / 200-204 · Hibernate to PostgreSQL, Redis as cache</div>
+
+  <svg viewBox="0 0 1040 566" role="img" aria-label="A gRPC sendData call carrying an opcode passes a JWT interceptor, is dispatched by opcode, and the game service owning the clock persists through Hibernate into PostgreSQL with Redis as cache">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#151412"/></marker>
+      <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#1a6b3c"/></marker>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#b3261e"/></marker>
+      <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#8a5a00"/></marker>
+    </defs>
+
+    <rect x="20" y="46" width="180" height="104" rx="4" fill="#fffdf8" stroke="#151412"/>
+    <text x="34" y="70" font-size="14" font-weight="600">game client</text>
+    <text x="34" y="92" font-size="11" class="mono">gRPC over HTTP/2</text>
+    <text x="34" y="110" font-size="11" class="mono">port :9090</text>
+    <text x="34" y="132" font-size="11" fill="#6b6357">every action, one call</text>
+
+    <rect x="230" y="46" width="200" height="104" rx="4" fill="#fffdf8" stroke="#151412" stroke-width="2"/>
+    <text x="244" y="70" font-size="14" font-weight="600">sendData</text>
+    <text x="244" y="92" font-size="11" class="mono">opcode: int</text>
+    <text x="244" y="110" font-size="11" class="mono">payload: JSON string</text>
+    <text x="244" y="132" font-size="11" fill="#6b6357">the only method</text>
+
+    <rect x="460" y="46" width="200" height="104" rx="4" fill="#eef5ef" stroke="#1a6b3c" stroke-width="2"/>
+    <text x="474" y="70" font-size="14" font-weight="600" fill="#1a6b3c">JWT interceptor</text>
+    <text x="474" y="92" font-size="11" class="mono">checks the token on</text>
+    <text x="474" y="110" font-size="11" class="mono">everything except</text>
+    <text x="474" y="128" font-size="11" class="mono">the auth opcodes</text>
+
+    <rect x="690" y="46" width="330" height="104" rx="4" fill="#fffdf8" stroke="#151412"/>
+    <text x="704" y="70" font-size="14" font-weight="600">opcode dispatch</text>
+    <text x="704" y="92" font-size="11" class="mono">one handler per opcode, selected by an int</text>
+    <text x="704" y="110" font-size="11" class="mono">the client names the action, nothing more</text>
+    <text x="704" y="132" font-size="11" fill="#6b6357">no route table, no versioned URL</text>
+
+    <path d="M200 98 L230 98" stroke="#151412" stroke-width="2" marker-end="url(#a)"/>
+    <path d="M430 98 L460 98" stroke="#151412" stroke-width="2" marker-end="url(#a)"/>
+    <path d="M660 98 L690 98" stroke="#1a6b3c" stroke-width="2" marker-end="url(#ag)"/>
+    <path d="M510 150 L510 172 L210 172 L210 200" stroke="#b3261e" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+    <text x="222" y="196" font-size="11" class="mono" fill="#b3261e">no token: refused before any handler runs</text>
+
+    <text x="20" y="186" font-size="12" letter-spacing="1.5" fill="#6b6357" class="mono">WHAT AN OPCODE IS — ONE INT SPANS THE WHOLE GAME</text>
+    <rect x="20" y="200" width="230" height="96" rx="4" fill="#fffdf8" stroke="#151412"/>
+    <text x="34" y="224" font-size="13" font-weight="600">100 USER_INFO</text>
+    <text x="34" y="246" font-size="11" class="mono">account and profile</text>
+    <text x="34" y="264" font-size="11" class="mono">the read that is not</text>
+    <text x="34" y="282" font-size="11" class="mono">about the farm</text>
+
+    <rect x="266" y="200" width="754" height="96" rx="4" fill="#fffdf8" stroke="#151412"/>
+    <text x="280" y="222" font-size="12" class="mono" fill="#6b6357">THE FARM, BY OPCODE — THE SERVER ANSWERS EACH ONE WITH STATE, NOT WITH PERMISSION</text>
+    <text x="280" y="246" font-size="12" class="mono">200 PLANT_PROGRESS_INFO   plot state and countdowns</text>
+    <text x="280" y="266" font-size="12" class="mono">201 SOW   202 PICKING   203 SPRAY_WATER   204 PROTECT_RESOURCE</text>
+    <text x="280" y="286" font-size="12" class="mono" fill="#6b6357">four verbs and a question: sow, harvest, water, protect before it is stolen</text>
+
+    <text x="20" y="328" font-size="12" letter-spacing="1.5" fill="#6b6357" class="mono">WHERE THE STATE AND THE CLOCK LIVE</text>
+    <rect x="20" y="342" width="240" height="86" rx="4" fill="#eef5ef" stroke="#1a6b3c" stroke-width="2"/>
+    <text x="34" y="366" font-size="13" font-weight="600" fill="#1a6b3c">game service</text>
+    <text x="34" y="388" font-size="11" class="mono">owns the clock: it decides</text>
+    <text x="34" y="406" font-size="11" class="mono">when a plot is ready and</text>
+    <text x="34" y="424" font-size="11" class="mono">who gets stolen from</text>
+
+    <rect x="290" y="342" width="220" height="86" rx="4" fill="#fffdf8" stroke="#151412"/>
+    <text x="304" y="366" font-size="13" font-weight="600">Hibernate</text>
+    <text x="304" y="388" font-size="11" class="mono">the planted state and</text>
+    <text x="304" y="406" font-size="11" class="mono">the timestamps that</text>
+    <text x="304" y="424" font-size="11" class="mono">make a countdown real</text>
+
+    <rect x="540" y="342" width="200" height="86" rx="4" fill="#fffdf8" stroke="#151412"/>
+    <text x="554" y="366" font-size="13" font-weight="600">PostgreSQL</text>
+    <text x="554" y="388" font-size="11" class="mono">the record that</text>
+    <text x="554" y="406" font-size="11" class="mono">survives a restart</text>
+    <text x="554" y="424" font-size="11" class="mono">of the service</text>
+
+    <rect x="770" y="342" width="250" height="86" rx="4" fill="#fffdf8" stroke="#8a5a00" stroke-width="2"/>
+    <text x="784" y="366" font-size="13" font-weight="600" fill="#8a5a00">Redis</text>
+    <text x="784" y="388" font-size="11" class="mono">cache in front of the reads,</text>
+    <text x="784" y="406" font-size="11" class="mono">so the plot a client polls</text>
+    <text x="784" y="424" font-size="11" class="mono">is not a database trip each time</text>
+
+    <path d="M260 385 L290 385" stroke="#151412" stroke-width="2" marker-end="url(#a)"/>
+    <path d="M510 385 L540 385" stroke="#151412" stroke-width="2" marker-end="url(#a)"/>
+    <path d="M740 385 L770 385" stroke="#8a5a00" stroke-width="2" marker-end="url(#ao)"/>
+
+    <rect x="20" y="452" width="490" height="96" rx="4" fill="#fdeeed" stroke="#b3261e"/>
+    <text x="36" y="476" font-size="12" class="mono" fill="#b3261e">WHY ONE RPC AND NOT A REST SURFACE</text>
+    <text x="36" y="498" font-size="12">A growing surface is a new route, a version and a DTO for every action,</text>
+    <text x="36" y="516" font-size="12">and a client that has to be updated when one of them moves. An opcode</text>
+    <text x="36" y="534" font-size="12">table is the same dispatch with one shape to keep.</text>
+
+    <rect x="530" y="452" width="490" height="96" rx="4" fill="#fffdf8" stroke="#cfc7b8"/>
+    <text x="546" y="476" font-size="12" class="mono" fill="#6b6357">WHAT PROTECTS IT, AND WHAT IS NOT IN THE REPO</text>
+    <text x="546" y="498" font-size="12">The JWT interceptor is the only gate, so an opcode is either reachable</text>
+    <text x="546" y="516" font-size="12">without a token or behind one. The signing key pair is supplied by the</text>
+    <text x="546" y="534" font-size="12">environment, and dev keys are generated locally rather than committed.</text>
+  </svg>
+
+  <div class="pairs">
+    <div class="card">
+      <b>Server-authoritative means the clock</b>
+      <p>A harvest a client could time itself is a harvest a client can fake. The server stores when a plot
+        was planted and answers "is it ready" — so the countdown is a fact with an owner, not a local timer
+        the client is trusted to report.</p>
+    </div>
+    <div class="card">
+      <b>Why the payload is JSON inside gRPC</b>
+      <p>The envelope stays typed and the body stays open, so adding a field to the farm's state does not
+        mean regenerating a proto for a client that only wanted to water a plot.</p>
+    </div>
+    <div class="card">
+      <b>Two stores, two jobs again</b>
+      <p>PostgreSQL holds what must survive a restart — the planted state and its timestamps. Redis holds
+        what may be recomputed, which is exactly the plot a client polls while it waits.</p>
+    </div>
+  </div>
+
+  <footer>
+    Sources: docs/diagrams/one-rpc-many-opcodes.mmd for the Mermaid version; src/main/proto for the single
+    RPC, src/main/java for the interceptor, the opcode dispatch and the service; the README's "What this
+    demonstrates", opcode table and configuration section. `make diagram` exports a PNG if a browser is
+    present.
+  </footer>
+</div>
