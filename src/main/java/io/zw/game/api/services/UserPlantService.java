@@ -307,7 +307,11 @@ public class UserPlantService {
             return response;
         }
 
-        if (userPlantModel.getStatus() != GameEnum.PlantStatus.COMPLETED.getValue() || userPlantModel.getNextTimeToPick() < DateTime.now().getMillis() / 1000) {
+        // Refused while the countdown is still running, which is what the error name says: the
+        // comparison was the other way round, so a plant was pickable before its time and refused
+        // once the time had come. nextTimeToPick is a future timestamp - addExp sets it to
+        // now + countdown - so "the time has not come" is nextTimeToPick > now.
+        if (userPlantModel.getStatus() != GameEnum.PlantStatus.COMPLETED.getValue() || userPlantModel.getNextTimeToPick() > DateTime.now().getMillis() / 1000) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.NOT_ALREADY_TIME_TO_PICKING_FRUIT);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);
@@ -412,7 +416,11 @@ public class UserPlantService {
             return response;
         }
 
-        if (userPlantModel.getStatus() != GameEnum.PlantStatus.COMPLETED.getValue() || userPlantModel.getNextTimeToPick() < DateTime.now().getMillis() / 1000) {
+        // Refused while the countdown is still running, which is what the error name says: the
+        // comparison was the other way round, so a plant was pickable before its time and refused
+        // once the time had come. nextTimeToPick is a future timestamp - addExp sets it to
+        // now + countdown - so "the time has not come" is nextTimeToPick > now.
+        if (userPlantModel.getStatus() != GameEnum.PlantStatus.COMPLETED.getValue() || userPlantModel.getNextTimeToPick() > DateTime.now().getMillis() / 1000) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.NOT_ALREADY_TIME_TO_PICKING_FRUIT);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);

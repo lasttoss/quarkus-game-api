@@ -141,7 +141,7 @@ make chart     # helm lint --strict + helm template
 
 | class | lines |
 |---|---|
-| `UserPlantService` | 0.0% (0/288) |
+| `UserPlantService` | 28.1% (81/288) |
 | `GameRequest.Builder` | 0.0% (0/113) |
 | `GameResponse.Builder` | 0.0% (0/113) |
 | `GameResponse` | 0.0% (0/96) |
@@ -150,26 +150,33 @@ make chart     # helm lint --strict + helm template
 | `ConfigService` | 0.0% (0/38) |
 | `UserInventoryModel` | 80.0% (20/25) |
 | `UserPlantMapperImpl` | 0.0% (0/25) |
-| `ApiErrorEnum` | 0.0% (0/24) |
+| `ApiErrorEnum` | 95.8% (23/24) |
 | `GameService` | 0.0% (0/21) |
 | `AuthorizationServerInterceptor` | 0.0% (0/20) |
-| **total** | **7.1%** (91/1281 lines, 0.6% of 931 branches) |
+| **total** | **17.0%** (218/1281 lines, 3.4% of 931 branches) |
 
-The models hold the rules a player actually feels, so they are covered without a database or a Quarkus
-context: a new plant waits for a seed and cannot be picked, sowing starts it from zero rather than
-inheriting the old growth, and experience carries it to COMPLETED at the *last* required threshold and
-not at any earlier one. The countdown a completed plant waits for is indexed by `plantId - 1`, so a
-test grows plant 2 to show that the entry it waits for is its own.
+The plant rules are covered from both ends: the model tests check what growing does to a plant, and the
+service tests check who is allowed to do what and when, with the four repositories, the config service
+and the two mappers replaced by mocks - which is what makes the timing rules testable at all, since the
+countdown a completed plant waits for is just a timestamp a test can place on either side of now.
 
-Two rules of the inventory and the watering can are pinned down because they are choices rather than
-arithmetic: using more than you hold is silently clamped to zero (never negative, and never refused),
-and every use moves `updated_at` forward, since the row is written back on each one.
+**Fixed - the picking guard was the wrong way round.** `pickingFruit` and `protectResource` both
+refused when `nextTimeToPick < now`, which is exactly when picking and protecting become allowed: a
+plant was pickable before its time and refused once the time had come. The error it answers with names
+the intended behaviour (`NOT_ALREADY_TIME_TO_PICKING_FRUIT`), and `addExp` sets the field to
+`now + countdown`, so the intended test is `nextTimeToPick > now`. The two tests that say so - one on
+each side of now - failed before the change and pass after it.
 
-One thing is recorded rather than fixed: the completion check reads the last entry of the required-exp
-list, so a plant grown while the season config is still empty throws `IndexOutOfBoundsException`
-instead of simply staying in progress. The test says what happens today; whether that should be a
-handled error is a decision.
+**Recorded, not fixed - every "is this plant allowed" check searches the config with `contains(int)`.**
+The lists hold `SeedConfigData` objects and the argument is `plantId - 1`, so `contains` can never be
+true and a request that passes every other check is still answered with `INVALID_RESOURCE`. Sowing a
+seed and picking a fruit are therefore unreachable behind this check. Fixing it means deciding what the
+config is supposed to say about a plant id - a question for whoever writes the config - so a test
+records the behaviour today: after the guard passes, the answer is `INVALID_RESOURCE`.
 
-Still to cover: the services. `UserPlantService` is the largest file in this repository at 470 lines
-and is where the plant rules are enforced end to end - the next pass. `ConfigService` and `GameService`
-are smaller and follow.
+Two more things are recorded rather than changed: `protectResource` accepts a protect type nobody
+knows and answers OK without marking anything (the switch has no default), and the completion check on
+the model reads the last entry of the required-exp list, so an empty season config throws.
+
+Still to cover: `ConfigService` and `GameService`, and the rest of the service's branches (sowing,
+watering) follow the same shape.
