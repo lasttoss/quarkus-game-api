@@ -147,13 +147,13 @@ make chart     # helm lint --strict + helm template
 | `GameResponse` | 0.0% (0/96) |
 | `GameRequest` | 0.0% (0/96) |
 | `UserPlantModel` | 95.2% (40/42) |
+| `UserWateringCanModel` | 92.7% (38/41) |
 | `ConfigService` | 100.0% (38/38) |
-| `UserWateringCanModel` | 90.9% (30/33) |
 | `UserInventoryModel` | 80.0% (20/25) |
 | `UserPlantMapperImpl` | 0.0% (0/25) |
 | `ApiErrorEnum` | 95.8% (23/24) |
 | `GameService` | 0.0% (0/21) |
-| **total** | **40.5%** (527/1301 lines, 10.7% of 945 branches) |
+| **total** | **40.9%** (535/1309 lines, 11.1% of 949 branches) |
 
 Branch coverage is the lower number because most of what is left uncovered is branchier than what is
 covered: `GameService` and the gRPC layer, whose opcode switch is the next thing to take.
@@ -201,6 +201,14 @@ calls it too, because that is where the numbers a client displays come from, and
 before the check on the can rather than after - a player away for ten minutes arrives holding the two
 water that came back with the clock, and the check has to see them.
 
+Water stops at fifty. `MAX_WATER` is the ceiling, nothing is ever added above it, and a can that is
+somehow already above it - a store that sells water could do that - is left where it is, because the rule
+is about not giving more rather than about taking away. If fifty is not the number, it is one constant.
+A full can also does not bank time: the anchor moves to now when the can is full or when the call filled
+it, so an hour spent at fifty is an hour nobody gets back, and the first water spent after that starts a
+fresh five minutes. Leaving the anchor behind instead would pay out the intervals that arrived while
+there was no room, which is a different rule wearing the same ceiling.
+
 The trap is the anchor: a can that has never been refilled carries `nextTimeToReset = 0`, and treating
 that as a timestamp would make `now - 0` around seventeen hundred million, or millions of water from a
 brand new can. Zero means the can has not started counting, so the first call only sets it. There is a
@@ -220,9 +228,6 @@ required-exp list, so a season config with no plants raises `IndexOutOfBounds`; 
 list that is empty raises `IndexOutOfBounds` and one whose last entry is zero raises
 `IllegalArgumentException`. All three are config errors reaching a client as a crash rather than as an
 error code.
-
-**Water has no ceiling.** Five minutes is one water with no maximum, so a week away is two thousand of
-them. A cap is a balance decision and needs a number.
 
 **Buying water is not in this repository.** The store the water can also come from is elsewhere: there is
 no opcode for it here and no `WATER` resource type in `GameEnum.Resource`. If the store is meant to fill
