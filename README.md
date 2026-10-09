@@ -134,3 +134,20 @@ probes its endpoint, and otherwise it falls back to a TCP connect rather than in
 ```bash
 make chart     # helm lint --strict + helm template
 ```
+
+## Coverage
+
+Measured with `./mvnw -B test` plus the JaCoCo plugin (line and branch):
+
+| | covered / total | |
+|---|---|---|
+| lines | 4 / 1281 | **0.3%** |
+| branches | 0 / 931 | **0.0%** |
+
+That is the real number and it is not a mistake in the measurement. The suite that exercises this service is the
+one tagged `integration`, which needs the PostgreSQL and Redis of `docker-compose.yml` - CI says so itself and
+runs only the unit tests. So what CI proves here is that the project builds and that its unit suite passes; what
+proves the service end to end is the smoke run against the stack.
+
+`internal/utils` is the one place the unit suite reaches (80% of its 5 lines). Everything else - `services` at 358
+lines, `repositories`, `mappers` - is only reached with the stack up.
