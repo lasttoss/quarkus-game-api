@@ -141,42 +141,59 @@ make chart     # helm lint --strict + helm template
 
 | class | lines |
 |---|---|
-| `UserPlantService` | 28.1% (81/288) |
+| `UserPlantService` | 61.5% (177/288) |
 | `GameRequest.Builder` | 0.0% (0/113) |
 | `GameResponse.Builder` | 0.0% (0/113) |
 | `GameResponse` | 0.0% (0/96) |
 | `GameRequest` | 0.0% (0/96) |
 | `UserPlantModel` | 95.2% (40/42) |
-| `ConfigService` | 0.0% (0/38) |
+| `ConfigService` | 100.0% (38/38) |
 | `UserInventoryModel` | 80.0% (20/25) |
 | `UserPlantMapperImpl` | 0.0% (0/25) |
 | `ApiErrorEnum` | 95.8% (23/24) |
 | `GameService` | 0.0% (0/21) |
 | `AuthorizationServerInterceptor` | 0.0% (0/20) |
-| **total** | **17.0%** (218/1281 lines, 3.4% of 931 branches) |
+| **total** | **30.9%** (396/1281 lines, 8.2% of 931 branches) |
 
-The plant rules are covered from both ends: the model tests check what growing does to a plant, and the
-service tests check who is allowed to do what and when, with the four repositories, the config service
-and the two mappers replaced by mocks - which is what makes the timing rules testable at all, since the
-countdown a completed plant waits for is just a timestamp a test can place on either side of now.
+The plant rules are covered from both ends: the model tests check what growing does to a plant, the
+service tests check who is allowed to do what and when, and the config tests check the cache in front of
+the database. Everything is mocked - repositories, Redis, config service, mappers - which is what makes
+the timing rules testable at all, since the countdown a completed plant waits for is just a timestamp a
+test can place on either side of now.
 
-**Fixed - the picking guard was the wrong way round.** `pickingFruit` and `protectResource` both
-refused when `nextTimeToPick < now`, which is exactly when picking and protecting become allowed: a
-plant was pickable before its time and refused once the time had come. The error it answers with names
-the intended behaviour (`NOT_ALREADY_TIME_TO_PICKING_FRUIT`), and `addExp` sets the field to
-`now + countdown`, so the intended test is `nextTimeToPick > now`. The two tests that say so - one on
-each side of now - failed before the change and pass after it.
+### Fixed: the picking guard was the wrong way round
 
-**Recorded, not fixed - every "is this plant allowed" check searches the config with `contains(int)`.**
-The lists hold `SeedConfigData` objects and the argument is `plantId - 1`, so `contains` can never be
-true and a request that passes every other check is still answered with `INVALID_RESOURCE`. Sowing a
-seed and picking a fruit are therefore unreachable behind this check. Fixing it means deciding what the
-config is supposed to say about a plant id - a question for whoever writes the config - so a test
-records the behaviour today: after the guard passes, the answer is `INVALID_RESOURCE`.
+`pickingFruit` and `protectResource` both refused when `nextTimeToPick < now`, which is exactly when
+picking and protecting become allowed: a plant was pickable before its time and refused once the time had
+come. The error it answers with names the intended behaviour (`NOT_ALREADY_TIME_TO_PICKING_FRUIT`), and
+`addExp` sets the field to `now + countdown`, so the intended test is `nextTimeToPick > now`. The two
+tests that say so - one on each side of now - failed before the change and pass after it.
 
-Two more things are recorded rather than changed: `protectResource` accepts a protect type nobody
-knows and answers OK without marking anything (the switch has no default), and the completion check on
-the model reads the last entry of the required-exp list, so an empty season config throws.
+### Found and not changed
 
-Still to cover: `ConfigService` and `GameService`, and the rest of the service's branches (sowing,
-watering) follow the same shape.
+These are pinned by tests rather than fixed, because each one is a decision about behaviour that belongs
+to whoever owns the game, not to whoever writes the test. Every one of them is a way the plant feature
+can answer a client with the wrong thing, so they are worth a decision rather than a note.
+
+**The config check never passes.** `sowSeed`, `sprayWater` and `pickingFruit` all ask whether a plant id
+is allowed with `seedConfig.getData().contains(plantId - 1)`. That list holds `SeedConfigData` objects -
+the same list the rest of the code indexes with `get(plantId - 1)` - so comparing one against an `int`
+can never be true, and a request that passes every other check is still answered with
+`INVALID_RESOURCE`. Sowing, watering and picking are all unreachable behind it. The neighbouring check in
+`sprayWater` searches `fruitTimeCountdown`, which really is a `List<Integer>` and works, which is how you
+can tell the two apart.
+
+**A new watering can holds nothing and nothing fills it.** `UserWateringCanModel(userId)` starts at zero,
+`use()` only ever takes water out, and no code in this repository sets a can's quantity - the opcodes are
+`PING` and the five plant operations, with nothing to fetch or buy water. So every spray a real player can
+send is refused with `NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER`, the plant never grows, and picking and
+protecting are states nothing inside this repository can reach.
+
+**An unknown protect type is accepted.** `protectResource` switches on the type with no default, so a
+client that sends anything else gets `OK` and nothing happens. Harmless, but it answers a request it did
+not perform.
+
+**An empty season config throws.** The completion check on the model reads the last entry of the
+required-exp list, so a season config with no plants raises `IndexOutOfBounds` instead of refusing.
+
+Still to cover: `GameService`, whose opcode handling can be tested without a client.
