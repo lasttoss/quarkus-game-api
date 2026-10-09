@@ -144,10 +144,12 @@ Measured with `./mvnw -B test` plus the JaCoCo plugin (line and branch):
 | lines | 4 / 1281 | **0.3%** |
 | branches | 0 / 931 | **0.0%** |
 
-That is the real number and it is not a mistake in the measurement. The suite that exercises this service is the
-one tagged `integration`, which needs the PostgreSQL and Redis of `docker-compose.yml` - CI says so itself and
-runs only the unit tests. So what CI proves here is that the project builds and that its unit suite passes; what
-proves the service end to end is the smoke run against the stack.
+That is the real number and it is not an artefact of what CI runs: this repository excludes no tests, so the suite
+in CI is the whole suite. The truth it tells is that the tests that exist here are thin - `internal/utils` is the
+one place they reach - and that a service whose logic lives in `services` (358 lines) and `repositories` is, today,
+proved by its smoke run against the stack rather than by unit tests.
 
-`internal/utils` is the one place the unit suite reaches (80% of its 5 lines). Everything else - `services` at 358
-lines, `repositories`, `mappers` - is only reached with the stack up.
+(The first version of this paragraph said the uncovered tests were `integration`-tagged and held back. That was
+copied from game-center-api's CI comment without checking, and it was wrong here. Corrected.)
+
+The JaCoCo plugin is committed so the number can be reproduced rather than taken on trust.
