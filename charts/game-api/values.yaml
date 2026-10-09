@@ -1,0 +1,34 @@
+replicaCount: 2
+image:
+  repository: ghcr.io/lasttoss/quarkus-game-api
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  grpcPort: 9090      # the game protocol
+  httpPort: 8080      # health, metrics, swagger
+resources:
+  requests: {cpu: 200m, memory: 256Mi}
+  limits: {cpu: 1000m, memory: 512Mi}
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+networkPolicy:
+  enabled: true
+  datastorePorts:
+    - 5432   # PostgreSQL
+    - 6379   # Redis
+probes:
+  # No health extension was found, so the probe is a TCP connect rather than a path this chart would be inventing
+  path: ""
+env: []
+secret:
+  existingSecret: ""
+config:
+  dbUrl: jdbc:postgresql://postgres:5432/gameapi
+  redisHost: redis

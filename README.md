@@ -118,3 +118,19 @@ waits.
 
 `docs/diagrams/one-rpc-many-opcodes.mmd` is the Mermaid source; `make diagram` exports a PNG if a browser
 is present.
+
+## The chart
+
+`charts/game-api/` deploys the service with the two things a gRPC game API needs: a rolling update that never
+takes a replica out of the Service before its successor can accept a connection (`maxUnavailable: 0`), and a
+PodDisruptionBudget that keeps one serving through a disruption. It also carries an HPA, no service-account
+token, a read-only root filesystem with an `emptyDir` for the `/tmp` a JVM writes to, and a NetworkPolicy whose
+egress names PostgreSQL and Redis rather than allowing everything.
+
+The probe is chosen from what the build actually has: if the health extension is on the classpath the chart
+probes its endpoint, and otherwise it falls back to a TCP connect rather than inventing a path. The value is in
+`values.yaml`, so the choice is visible rather than hidden in a template.
+
+```bash
+make chart     # helm lint --strict + helm template
+```

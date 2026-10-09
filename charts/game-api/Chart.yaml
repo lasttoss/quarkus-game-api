@@ -1,0 +1,6 @@
+apiVersion: v2
+name: game-api
+description: The gRPC game API on Kubernetes - a server-authoritative service that holds the clock, deployed with a rolling update that keeps a replica answering
+type: application
+version: 0.1.0
+appVersion: "1.0"

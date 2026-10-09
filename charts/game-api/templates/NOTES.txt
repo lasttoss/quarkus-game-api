@@ -1,0 +1,8 @@
+{{ .Chart.Name }} {{ .Chart.Version }} is installed as {{ .Release.Name }}.
+
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  helm test {{ .Release.Name }}
+
+The game protocol is gRPC on {{ .Values.service.grpcPort }}; HTTP on {{ .Values.service.httpPort }} serves health,
+metrics and swagger. The service reaches PostgreSQL and Redis by name ({{ .Values.config.redisHost }}) and the
+policy allows those ports and DNS - nothing else. Credentials belong in a Secret: set secret.existingSecret.
