@@ -1,76 +1,85 @@
-# game.api
+# quarkus-game-api
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+**Server-authoritative game backend over gRPC in Quarkus (Java 17)**: one `sendData` RPC carries
+the whole game protocol as opcode + JSON payload, gameplay is driven by server-side config, state
+is persisted with Hibernate and cached in Redis, and a JWT interceptor protects everything except
+the handshake.
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
-
-## Running the application in dev mode
-
-You can run your application in dev mode that enables live coding using:
-
-```shell script
-./mvnw compile quarkus:dev
+```proto
+service GameGrpc {
+    rpc sendData (GameRequest) returns (GameResponse);   // {opcode, payload}
+}
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+## What this demonstrates
 
-## Packaging and running the application
+- **Opcode dispatch instead of a growing REST surface**: the client sends an `opcode` and a JSON
+  payload, and `services/GameService` routes it to the right handler. Game protocols change every
+  sprint; adding an opcode does not add an endpoint, a version and a DTO.
+- **Config as game design data**: seeds, seasons, fruit rates, watering-can counts and timers live
+  in entities under `repositories`, so balance changes are data, not code.
+- **Authorization at the transport boundary**: `configs/AuthorizationServerInterceptor` reads and
+  verifies the bearer token once per call and exposes the user id through a request-scoped
+  `Principal`, so no handler has to remember to check it.
+- **Time-based gameplay in one place**: sow → grow → spray water → pick → protect is modelled as
+  explicit opcodes with server-side countdowns, which is the part clients must never compute.
+- **Typed wire format**: the protocol is a Protobuf service (`src/main/proto/game.proto`), so the
+  client and the server cannot silently disagree about the shape of a message.
 
-The application can be packaged using:
+## Opcodes
 
-```shell script
-./mvnw package
+| opcode | name | meaning |
+|---:|---|---|
+| 0 | `PING` | liveness |
+| 100 | `USER_INFO` | account / profile |
+| 200 | `PLANT_PROGRESS_INFO` | current plot state and countdowns |
+| 201 | `PLANT_PROGRESS_SOW` | plant a seed |
+| 202 | `PLANT_PROGRESS_PICKING` | harvest |
+| 203 | `PLANT_PROGRESS_SPRAY_WATER` | water a plot |
+| 204 | `PLANT_PROGRESS_PROTECT_RESOURCE` | protect a resource before it is stolen |
+
+The table lives in `constants/GameOpCode.java`.
+
+## Quickstart
+
+```bash
+git clone https://github.com/lasttoss/quarkus-game-api.git
+cd quarkus-game-api
+make up          # dev keys + postgres + redis + the gRPC service on :9090
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+Calling it: any gRPC client generated from `src/main/proto/game.proto` works. For a quick check
+from the shell:
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
+```bash
+./mvnw quarkus:dev            # needs postgres + redis + certs/ from make keys
+grpcurl -plaintext -d '{"opcode":0,"payload":"{}"}' localhost:9090 game.api.GameGrpc/sendData
 ```
 
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
+## Configuration
 
-## Creating a native executable
+`src/main/resources/application.properties` reads `GRPC_PORT`, `DB_URL`, `DB_USERNAME`,
+`DB_PASSWORD`, `REDIS_URL`, `REDIS_PASSWORD`, `REDIS_DATABASE`, `JWT_PUBLIC_KEY`,
+`JWT_PRIVATE_KEY` from the environment, with development defaults. See `.env.example`.
 
-You can create a native executable using:
+## Fixed while preparing this repository
 
-```shell script
-./mvnw package -Dnative
-```
+1. **The service could not start from a clean clone**: the configuration existed only as
+   `application.properties.bak`. It is now a real file with environment placeholders.
+2. **The JWT key pair the interceptor needs was not in the repository** (correctly), so startup
+   failed with no way to create one. `scripts/gen-dev-keys.sh` generates a development pair and
+   `certs/` is git-ignored.
+3. **Every `mvn package` tried to build a container image** (`quarkus.container-image.build=true`),
+   which fails on machines without a Docker daemon. Opt-in now.
+4. **A database password and a Redis password were committed** in that file; both are gone.
 
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+## Notes / limitations
 
-```shell script
-./mvnw package -Dnative -Dquarkus.native.container-build=true
-```
+- No automated tests yet; CI builds the module (`./mvnw -B -DskipTests package`), which is what
+  would have caught all four problems above.
+- The gameplay rules in this service are the same shape as the ones I ran in production, but this
+  is a clean-room extraction: no employer code, schema, asset or data is included.
 
-You can then execute your native executable with: `./target/game.api-1.0.0-SNAPSHOT-runner`
+## License
 
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
-
-## Related Guides
-
-- REST resources for Hibernate ORM with Panache ([guide](https://quarkus.io/guides/rest-data-panache)): Generate Jakarta REST resources for your Hibernate Panache entities and repositories
-- SmallRye JWT ([guide](https://quarkus.io/guides/security-jwt)): Secure your applications with JSON Web Token
-- Redis Cache ([guide](https://quarkus.io/guides/cache-redis-reference)): Use Redis as the caching backend
-- JDBC Driver - PostgreSQL ([guide](https://quarkus.io/guides/datasource)): Connect to the PostgreSQL database via JDBC
-
-## Provided Code
-
-### gRPC
-
-Create your first gRPC service
-
-[Related guide section...](https://quarkus.io/guides/grpc-getting-started)
-
-### REST Data with Panache
-
-Generating Jakarta REST resources with Panache
-
-[Related guide section...](https://quarkus.io/guides/rest-data-panache)
-
+MIT - see [LICENSE](LICENSE).

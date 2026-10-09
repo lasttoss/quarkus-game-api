@@ -45,3 +45,5 @@ nb-configuration.xml
 .certs/
 /src/main/resources/application.properties
 /src/main/resources/certs/
+certs/
+target/
