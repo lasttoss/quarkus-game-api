@@ -137,19 +137,39 @@ make chart     # helm lint --strict + helm template
 
 ## Coverage
 
-Measured with `./mvnw -B test` plus the JaCoCo plugin (line and branch):
+`./mvnw -B test` runs the unit suite; these are JaCoCo's numbers, line coverage:
 
-| | covered / total | |
-|---|---|---|
-| lines | 4 / 1281 | **0.3%** |
-| branches | 0 / 931 | **0.0%** |
+| class | lines |
+|---|---|
+| `UserPlantService` | 0.0% (0/288) |
+| `GameRequest.Builder` | 0.0% (0/113) |
+| `GameResponse.Builder` | 0.0% (0/113) |
+| `GameResponse` | 0.0% (0/96) |
+| `GameRequest` | 0.0% (0/96) |
+| `UserPlantModel` | 95.2% (40/42) |
+| `ConfigService` | 0.0% (0/38) |
+| `UserInventoryModel` | 80.0% (20/25) |
+| `UserPlantMapperImpl` | 0.0% (0/25) |
+| `ApiErrorEnum` | 0.0% (0/24) |
+| `GameService` | 0.0% (0/21) |
+| `AuthorizationServerInterceptor` | 0.0% (0/20) |
+| **total** | **7.1%** (91/1281 lines, 0.6% of 931 branches) |
 
-That is the real number and it is not an artefact of what CI runs: this repository excludes no tests, so the suite
-in CI is the whole suite. The truth it tells is that the tests that exist here are thin - `internal/utils` is the
-one place they reach - and that a service whose logic lives in `services` (358 lines) and `repositories` is, today,
-proved by its smoke run against the stack rather than by unit tests.
+The models hold the rules a player actually feels, so they are covered without a database or a Quarkus
+context: a new plant waits for a seed and cannot be picked, sowing starts it from zero rather than
+inheriting the old growth, and experience carries it to COMPLETED at the *last* required threshold and
+not at any earlier one. The countdown a completed plant waits for is indexed by `plantId - 1`, so a
+test grows plant 2 to show that the entry it waits for is its own.
 
-(The first version of this paragraph said the uncovered tests were `integration`-tagged and held back. That was
-copied from game-center-api's CI comment without checking, and it was wrong here. Corrected.)
+Two rules of the inventory and the watering can are pinned down because they are choices rather than
+arithmetic: using more than you hold is silently clamped to zero (never negative, and never refused),
+and every use moves `updated_at` forward, since the row is written back on each one.
 
-The JaCoCo plugin is committed so the number can be reproduced rather than taken on trust.
+One thing is recorded rather than fixed: the completion check reads the last entry of the required-exp
+list, so a plant grown while the season config is still empty throws `IndexOutOfBoundsException`
+instead of simply staying in progress. The test says what happens today; whether that should be a
+handled error is a decision.
+
+Still to cover: the services. `UserPlantService` is the largest file in this repository at 470 lines
+and is where the plant rules are enforced end to end - the next pass. `ConfigService` and `GameService`
+are smaller and follow.
