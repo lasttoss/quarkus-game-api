@@ -28,6 +28,8 @@ probes:
   path: ""
 env: []
 secret:
+  # Set true only to render or lint outside a cluster; a real install must name a Secret.
+  allowMissing: false
   existingSecret: ""
 config:
   dbUrl: jdbc:postgresql://postgres:5432/gameapi
