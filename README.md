@@ -152,8 +152,7 @@ make chart     # helm lint --strict + helm template
 | `UserInventoryModel` | 80.0% (20/25) |
 | `UserPlantMapperImpl` | 0.0% (0/25) |
 | `ApiErrorEnum` | 95.8% (23/24) |
-| `GameService` | 0.0% (0/21) |
-| **total** | **40.9%** (535/1309 lines, 11.1% of 949 branches) |
+| **total** | **50.0%** (654/1309 lines, 13.7% of 949 branches) |
 
 Branch coverage is the lower number because most of what is left uncovered is branchier than what is
 covered: `GameService` and the gRPC layer, whose opcode switch is the next thing to take.
@@ -219,6 +218,11 @@ test named after that, and it fails if anyone removes the special case.
 Each of these is a decision about behaviour rather than an obvious mistake, so they are pinned by tests
 and left for whoever owns the rules.
 
+**Every plant opcode is answered with the info opcode.** `PING` echoes itself, but the five plant
+operations all come back as `PLANT_PROGRESS_INFO` whatever was asked, and so does an opcode nobody knows.
+Nothing in this repository depends on the field - the transport pairs a request with its response - so it
+is a change to what clients see, and that is their decision. A test says what happens today.
+
 **An unknown protect type is accepted.** `protectResource` switches on the type with no default, so a
 client that sends anything else gets `OK` and nothing happens.
 
@@ -233,4 +237,5 @@ error code.
 no opcode for it here and no `WATER` resource type in `GameEnum.Resource`. If the store is meant to fill
 this can, it is writing to the same row.
 
-Still to cover: `GameService`, whose opcode switch can be tested without a client.
+Still to cover: `RedisService`, which is a thin wrapper around Redisson and needs a server to mean
+anything, and the generated mappers and DTOs.
