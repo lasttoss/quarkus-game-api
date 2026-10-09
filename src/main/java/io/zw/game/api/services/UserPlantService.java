@@ -64,6 +64,29 @@ public class UserPlantService {
 
     Gson gson = new Gson();
 
+
+    /**
+     * The config lists are positional: the line under every one of these checks indexes them with
+     * get(plantId - 1), so the question being asked is whether that position exists - not whether the
+     * list happens to hold the number plantId - 1. Written as contains(plantId - 1) it compared a
+     * SeedConfigData (or a list of countdown seconds) against an index, which can never be true for the
+     * seed configs and is true only by accident elsewhere, and every request was refused one line
+     * before the code the check was there to protect.
+     */
+    /**
+     * Seconds, as an int, because nextTimeToReset is an int column: the schema these timestamps live
+     * in carries the 2038 boundary either way, and matching its width here keeps the arithmetic in one
+     * type instead of casting at every use.
+     */
+    private static int nowSeconds() {
+        return (int) (DateTime.now().getMillis() / 1000);
+    }
+
+    private static boolean isPlantInConfig(List<?> plants, int plantId) {
+        int index = plantId - 1;
+        return index >= 0 && index < plants.size();
+    }
+
     @Transactional
     public ResultDTO getInfo(String userId) {
         ResultDTO response = new ResultDTO();
@@ -75,6 +98,11 @@ public class UserPlantService {
         UserWateringCanModel userWateringCanModel = userWateringCanRepository.findByUserId(userId);
         if (userWateringCanModel == null) {
             userWateringCanModel = new UserWateringCanModel(userId);
+            userWateringCanRepository.persist(userWateringCanModel);
+        }
+        // The can fills itself one water every five minutes, and the client should see that happen
+        // even when it is only asking to look: getInfo is where the numbers in it come from.
+        if (userWateringCanModel.refill(nowSeconds()) > 0) {
             userWateringCanRepository.persist(userWateringCanModel);
         }
 
@@ -156,7 +184,7 @@ public class UserPlantService {
             return response;
         }
 
-        if (!seedConfig.getData().contains(item.getResourceId() - 1)) {
+        if (!isPlantInConfig(seedConfig.getData(), item.getResourceId())) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.INVALID_RESOURCE);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);
@@ -213,6 +241,12 @@ public class UserPlantService {
             return response;
         }
 
+        // Before the check below, or a player who has been away long enough for water to come back
+        // would still be told there is not enough of it.
+        if (userWateringCanModel.refill(nowSeconds()) > 0) {
+            userWateringCanRepository.persist(userWateringCanModel);
+        }
+
         if (userWateringCanModel.getQuantity() < request.getQuantity()) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER);
             response.setStatus(GrpcStatus.ABORTED.code);
@@ -242,7 +276,7 @@ public class UserPlantService {
             return response;
         }
 
-        if (!seedConfig.getData().contains(userPlantModel.getPlantId() - 1)) {
+        if (!isPlantInConfig(seedConfig.getData(), userPlantModel.getPlantId())) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.INVALID_RESOURCE);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);
@@ -256,7 +290,7 @@ public class UserPlantService {
             response.setError(error);
             return response;
         }
-        if (!pickingFruitCountdownConfig.getData().getFruitTimeCountdown().contains(userPlantModel.getPlantId() - 1)) {
+        if (!isPlantInConfig(pickingFruitCountdownConfig.getData().getFruitTimeCountdown(), userPlantModel.getPlantId())) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.INVALID_RESOURCE);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);
@@ -336,7 +370,7 @@ public class UserPlantService {
 
         int currentPlantId = userPlantModel.getPlantId();
 
-        if (!openFruitRateConfig.getData().getRates().contains(currentPlantId - 1)) {
+        if (!isPlantInConfig(openFruitRateConfig.getData().getRates(), currentPlantId)) {
             ErrorDTO error = new ErrorDTO(ApiErrorEnum.INVALID_RESOURCE);
             response.setStatus(GrpcStatus.ABORTED.code);
             response.setError(error);

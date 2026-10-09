@@ -7,6 +7,8 @@ import io.zw.game.api.constants.GameEnum;
 import io.zw.game.api.constants.RequestConstants;
 import io.zw.game.api.dto.config.OpenFruitRateConfig;
 import io.zw.game.api.dto.config.OpenFruitRateConfigData;
+import io.zw.game.api.dto.config.PickingFruitCountdownConfig;
+import io.zw.game.api.dto.config.PickingFruitCountdownConfigData;
 import io.zw.game.api.dto.config.SeasonConfig;
 import io.zw.game.api.dto.config.SeasonConfigData;
 import io.zw.game.api.dto.config.SeedConfig;
@@ -31,12 +33,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -258,31 +262,6 @@ class UserPlantServiceTest {
 
     // ------------------------------------------------------- the config lookups
 
-    /**
-     * Recorded, not fixed: every "is this plant in the config" check in this service searches a list
-     * of objects with contains(int), so it can never be true - the list holds SeedConfigData and the
-     * argument is (plantId - 1). The effect is that a request which passes every other check is still
-     * answered with INVALID_RESOURCE. Fixing it means deciding what the config is meant to say about a
-     * plant id, which is a question for whoever writes the config, so the test records the behaviour.
-     */
-    @Test
-    void pickingFruitStopsAtTheConfigCheckEvenWhenEverythingElseIsRight() {
-        givenACompletedPlantWaitingUntil(secondsFromNow(-1));
-        SeasonConfig seasonConfig = new SeasonConfig();
-        SeasonConfigData seasonData = new SeasonConfigData();
-        seasonData.setCurrentSeason(3);
-        seasonConfig.setData(seasonData);
-        when(configService.getSeasonConfig()).thenReturn(seasonConfig);
-
-        OpenFruitRateConfig rateConfig = new OpenFruitRateConfig();
-        OpenFruitRateConfigData rateData = new OpenFruitRateConfigData();
-        rateData.setRates(List.of(List.of(1, 2, 3)));
-        rateConfig.setData(rateData);
-        when(configService.getOpenFruitRateConfig()).thenReturn(rateConfig);
-
-        assertRefused(service.pickingFruit(USER_ID), ApiErrorEnum.INVALID_RESOURCE);
-    }
-
     // ------------------------------------------------------------------- sow seed
 
     static UserPlantModel emptyPlant() {
@@ -390,19 +369,44 @@ class UserPlantServiceTest {
         assertRefused(service.sowSeed(USER_ID, "{\"itemId\":\"seed-1\"}"), ApiErrorEnum.INVALID_RESOURCE);
     }
 
-    /**
-     * The other half of the check recorded further up the file, and this is where it does the most
-     * damage: with a seed in the inventory, a plant ready to be sown and a config that lists the seed,
-     * sowing is still answered with INVALID_RESOURCE. The config is read as a list of plants and
-     * searched by index, so the check never passes; the test pins that, and it is the test that should
-     * change when the check is.
-     */
+    /** Where the check used to stop: a seed the config knows now goes into the ground. */
     @Test
-    void sowSeedStopsAtTheConfigCheckEvenWhenEverythingElseIsRight() {
+    void sowingASeedTakesItFromTheInventoryAndPlantsIt() {
         givenEverythingSowingNeeds();
+        UserPlantDTO dto = new UserPlantDTO();
+        when(userPlantMapper.toDTO(any())).thenReturn(dto);
 
+        ResultDTO response = service.sowSeed(USER_ID, "{\"itemId\":\"seed-1\"}");
+
+        assertEquals(GrpcStatus.OK.code, response.getStatus());
+        UserPlantModel plant = verify(userPlantRepository).findByUserId(USER_ID) == null ? null : null; // read back below
+        plant = null;
+        // the plant the service was handed, checked through the repository it wrote to
+        var saved = org.mockito.ArgumentCaptor.forClass(UserPlantModel.class);
+        verify(userPlantRepository).persist(saved.capture());
+        assertEquals(GameEnum.PlantStatus.IS_GROWING.getValue(), saved.getValue().getStatus());
+        assertEquals(1, saved.getValue().getPlantId());
+
+        var inventory = org.mockito.ArgumentCaptor.forClass(UserInventoryModel.class);
+        verify(userInventoryRepository).persist(inventory.capture());
+        assertEquals(2, inventory.getValue().getQuantity(), "the seed was not taken out of the inventory");
+
+        assertEquals(20, dto.getMaxExp(), "maxExp should be the last required exp of the config");
+        assertEquals(0, dto.getCurrentIndex());
+    }
+
+    @Test
+    void sowingASeedIsRefusedForAPlantIdTheConfigDoesNotReach() {
+        givenEverythingSowingNeeds();
+        ItemModel tooLow = seedItem();
+        tooLow.setResourceId(0);
+        when(itemRepository.findById("seed-1")).thenReturn(tooLow);
         assertRefused(service.sowSeed(USER_ID, "{\"itemId\":\"seed-1\"}"), ApiErrorEnum.INVALID_RESOURCE);
-        verify(userPlantRepository, never()).persist(any(UserPlantModel.class));
+
+        ItemModel tooHigh = seedItem();
+        tooHigh.setResourceId(5); // the config lists one plant
+        when(itemRepository.findById("seed-1")).thenReturn(tooHigh);
+        assertRefused(service.sowSeed(USER_ID, "{\"itemId\":\"seed-1\"}"), ApiErrorEnum.INVALID_RESOURCE);
     }
 
     // ------------------------------------------------------------------ spray water
@@ -482,31 +486,189 @@ class UserPlantServiceTest {
         assertRefused(service.sprayWater(USER_ID, "{\"quantity\":1}"), ApiErrorEnum.INVALID_RESOURCE);
     }
 
-    /** Recorded, like the sowing one: the same config check stops watering with water still in the can. */
-    @Test
-    void sprayWaterStopsAtTheConfigCheckEvenWhenEverythingElseIsRight() {
-        givenEverythingWateringNeeds();
+    static PickingFruitCountdownConfig countdownConfig(int... seconds) {
+        PickingFruitCountdownConfig config = new PickingFruitCountdownConfig();
+        PickingFruitCountdownConfigData data = new PickingFruitCountdownConfigData();
+        data.setFruitTimeCountdown(java.util.Arrays.stream(seconds).boxed().toList());
+        config.setData(data);
+        return config;
+    }
 
-        assertRefused(service.sprayWater(USER_ID, "{\"quantity\":1}"), ApiErrorEnum.INVALID_RESOURCE);
-        verify(userWateringCanRepository, never()).persist(any(UserWateringCanModel.class));
+    /** Where the check used to stop: the water leaves the can and the plant grows. */
+    @Test
+    void wateringAPlantTakesTheWaterOutOfTheCanAndAddsTheExperience() {
+        givenEverythingWateringNeeds();
+        when(configService.getPickingFruitCountdownConfig()).thenReturn(countdownConfig(60));
+
+        ResultDTO response = service.sprayWater(USER_ID, "{\"quantity\":3}");
+
+        assertEquals(GrpcStatus.OK.code, response.getStatus());
+
+        var plant = org.mockito.ArgumentCaptor.forClass(UserPlantModel.class);
+        verify(userPlantRepository).persist(plant.capture());
+        assertEquals(3, plant.getValue().getCurrentExp());
+
+        var can = org.mockito.ArgumentCaptor.forClass(UserWateringCanModel.class);
+        verify(userWateringCanRepository).persist(can.capture());
+        assertEquals(7, can.getValue().getQuantity(), "the water was not taken out of the can");
     }
 
     /**
-     * The one that says what the other watering tests are really about: the can a new player is given
-     * holds nothing, and nothing in this service ever puts water in it - there is no opcode for it and
-     * no code anywhere that sets its quantity, only use() taking water out and stopping at zero. So
-     * every spray a real player can send is refused for want of water, the plant never grows, and the
-     * picking and protecting tests above are testing states that, from inside this repository, nothing
-     * can bring a plant into. Whoever fills the can is outside it; if it is no one, this is where the
-     * plant feature is broken end to end.
+     * The whole of the water-over-time rule, end to end: a can that has been empty for ten minutes
+     * arrives at the request holding the two water that came back with the clock, and the spray that
+     * used to be refused is allowed. Before refill() existed the answer was
+     * NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER, which is the answer a real player would always get, since a
+     * new can holds nothing.
      */
     @Test
-    void aFreshWateringCanHoldsNothingSoNobodyCanWater() {
-        assertEquals(0, new UserWateringCanModel(USER_ID).getQuantity());
-
+    void waterThatCameBackWithTheClockIsEnoughToWaterWith() {
+        UserWateringCanModel can = canHolding(0);
+        can.setNextTimeToReset((int) secondsFromNow(-600));
         when(userPlantRepository.findByUserId(USER_ID)).thenReturn(growingPlant());
-        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(new UserWateringCanModel(USER_ID));
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(can);
+        when(configService.getListSeedConfig()).thenReturn(seedConfigFor(1));
+        when(configService.getPickingFruitCountdownConfig()).thenReturn(countdownConfig(60));
+        lenient().when(userPlantMapper.toDTO(any())).thenReturn(new UserPlantDTO());
+        lenient().when(userWateringCanMapper.toDTO(any())).thenReturn(new UserWateringCanDTO());
 
-        assertRefused(service.sprayWater(USER_ID, "{\"quantity\":1}"), ApiErrorEnum.NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER);
+        ResultDTO response = service.sprayWater(USER_ID, "{\"quantity\":1}");
+
+        assertEquals(GrpcStatus.OK.code, response.getStatus());
+        assertEquals(1, can.getQuantity(), "two water came back, one was used");
+    }
+
+    @Test
+    void wateringIsRefusedForAPlantIdTheConfigDoesNotReach() {
+        UserWateringCanModel can = canHolding(10);
+        UserPlantModel plant = new UserPlantModel(USER_ID);
+        plant.sowSeed(5); // the config lists one plant
+        when(userPlantRepository.findByUserId(USER_ID)).thenReturn(plant);
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(can);
+        when(configService.getListSeedConfig()).thenReturn(seedConfigFor(1));
+        lenient().when(configService.getPickingFruitCountdownConfig()).thenReturn(countdownConfig(60, 120, 180, 240, 300));
+
+        assertRefused(service.sprayWater(USER_ID, "{\"quantity\":1}"), ApiErrorEnum.INVALID_RESOURCE);
+    }
+
+    /**
+     * The countdown check reads the same way - by position - and this is the test that says so: the
+     * plant is the third one, the countdown is in seconds, and the two only line up if the check asks
+     * whether position 2 exists rather than whether the list holds the number 2.
+     */
+    @Test
+    void wateringAPlantWhoseNumberIsAlsoACountdownIsAllowed() {
+        UserWateringCanModel can = canHolding(10);
+        UserPlantModel plant = new UserPlantModel(USER_ID);
+        plant.sowSeed(3);
+        when(userPlantRepository.findByUserId(USER_ID)).thenReturn(plant);
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(can);
+        when(configService.getListSeedConfig()).thenReturn(seedConfigFor(3));
+        when(configService.getPickingFruitCountdownConfig()).thenReturn(countdownConfig(60, 120, 180));
+        lenient().when(userPlantMapper.toDTO(any())).thenReturn(new UserPlantDTO());
+        lenient().when(userWateringCanMapper.toDTO(any())).thenReturn(new UserWateringCanDTO());
+
+        assertEquals(GrpcStatus.OK.code, service.sprayWater(USER_ID, "{\"quantity\":2}").getStatus());
+        assertEquals(8, can.getQuantity());
+    }
+
+    @Test
+    void wateringIsRefusedWhenTheCountdownConfigIsMissing() {
+        UserWateringCanModel can = canHolding(10);
+        when(userPlantRepository.findByUserId(USER_ID)).thenReturn(growingPlant());
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(can);
+        when(configService.getListSeedConfig()).thenReturn(seedConfigFor(1));
+        when(configService.getPickingFruitCountdownConfig()).thenReturn(null);
+
+        assertRefused(service.sprayWater(USER_ID, "{\"quantity\":1}"), ApiErrorEnum.INVALID_RESOURCE);
+    }
+
+    // --------------------------------------------------------------- picking fruit
+
+    static OpenFruitRateConfig rateConfig(int plants) {
+        OpenFruitRateConfig config = new OpenFruitRateConfig();
+        OpenFruitRateConfigData data = new OpenFruitRateConfigData();
+        java.util.List<java.util.List<Integer>> rates = new java.util.ArrayList<>();
+        for (int i = 0; i < plants; i++) {
+            rates.add(List.of(1, 2, 3));
+        }
+        data.setRates(rates);
+        config.setData(data);
+        return config;
+    }
+
+    static ItemModel fruit() {
+        ItemModel item = new ItemModel();
+        item.setId(UUID.randomUUID());
+        item.setResourceType(GameEnum.Resource.FRUIT_RESOURCE.getValue());
+        item.setResourceId(1);
+        return item;
+    }
+
+    void givenAPlantReadyToBePicked() {
+        when(userPlantRepository.findByUserId(USER_ID)).thenReturn(completedPlant(secondsFromNow(-1)));
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(canHolding(10));
+        SeasonConfig seasonConfig = new SeasonConfig();
+        SeasonConfigData seasonData = new SeasonConfigData();
+        seasonData.setCurrentSeason(3);
+        seasonConfig.setData(seasonData);
+        lenient().when(configService.getSeasonConfig()).thenReturn(seasonConfig);
+        lenient().when(configService.getOpenFruitRateConfig()).thenReturn(rateConfig(1));
+        lenient().when(userPlantMapper.toDTO(any())).thenReturn(new UserPlantDTO());
+        lenient().when(userWateringCanMapper.toDTO(any())).thenReturn(new UserWateringCanDTO());
+    }
+
+    @Test
+    void pickingPutsAFruitInTheInventoryAndClearsThePlant() {
+        givenAPlantReadyToBePicked();
+        when(itemRepository.findByResourceTypeAndResourceId(anyInt(), anyInt())).thenReturn(fruit());
+
+        ResultDTO response = service.pickingFruit(USER_ID);
+
+        assertEquals(GrpcStatus.OK.code, response.getStatus());
+
+        var inventory = org.mockito.ArgumentCaptor.forClass(UserInventoryModel.class);
+        verify(userInventoryRepository).persist(inventory.capture());
+        assertEquals(1, inventory.getValue().getQuantity());
+        assertEquals(3, inventory.getValue().getSeasonId(), "the fruit belongs to the season it was picked in");
+
+        var plant = org.mockito.ArgumentCaptor.forClass(UserPlantModel.class);
+        verify(userPlantRepository).persist(plant.capture());
+        assertEquals(GameEnum.PlantStatus.CAN_SOW.getValue(), plant.getValue().getStatus());
+        assertEquals(0, plant.getValue().getPlantId());
+    }
+
+    @Test
+    void pickingIsRefusedWhenTheSeasonConfigIsMissing() {
+        givenAPlantReadyToBePicked();
+        when(configService.getSeasonConfig()).thenReturn(null);
+
+        assertRefused(service.pickingFruit(USER_ID), ApiErrorEnum.INVALID_RESOURCE);
+        verify(userInventoryRepository, never()).persist(any(UserInventoryModel.class));
+    }
+
+    @Test
+    void pickingIsRefusedWhenTheFruitItemIsMissing() {
+        givenAPlantReadyToBePicked();
+        when(itemRepository.findByResourceTypeAndResourceId(anyInt(), anyInt())).thenReturn(null);
+
+        assertRefused(service.pickingFruit(USER_ID), ApiErrorEnum.ITEM_NOT_FOUND);
+        verify(userPlantRepository, never()).persist(any(UserPlantModel.class));
+    }
+
+    // ------------------------------------------------------------------ getInfo
+
+    @Test
+    void getInfoHandsBackTheWaterThatCameBackWithTheClock() {
+        UserWateringCanModel can = canHolding(0);
+        can.setNextTimeToReset((int) secondsFromNow(-300));
+        when(userPlantRepository.findByUserId(USER_ID)).thenReturn(new UserPlantModel(USER_ID));
+        when(userWateringCanRepository.findByUserId(USER_ID)).thenReturn(can);
+        lenient().when(userPlantMapper.toDTO(any())).thenReturn(new UserPlantDTO());
+        lenient().when(userWateringCanMapper.toDTO(any())).thenReturn(new UserWateringCanDTO());
+
+        assertEquals(GrpcStatus.OK.code, service.getInfo(USER_ID).getStatus());
+
+        assertEquals(1, can.getQuantity());
+        verify(userWateringCanRepository).persist(can);
     }
 }

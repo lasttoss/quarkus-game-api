@@ -141,59 +141,91 @@ make chart     # helm lint --strict + helm template
 
 | class | lines |
 |---|---|
-| `UserPlantService` | 61.5% (177/288) |
+| `UserPlantService` | 90.2% (266/295) |
 | `GameRequest.Builder` | 0.0% (0/113) |
 | `GameResponse.Builder` | 0.0% (0/113) |
 | `GameResponse` | 0.0% (0/96) |
 | `GameRequest` | 0.0% (0/96) |
 | `UserPlantModel` | 95.2% (40/42) |
 | `ConfigService` | 100.0% (38/38) |
+| `UserWateringCanModel` | 90.9% (30/33) |
 | `UserInventoryModel` | 80.0% (20/25) |
 | `UserPlantMapperImpl` | 0.0% (0/25) |
 | `ApiErrorEnum` | 95.8% (23/24) |
 | `GameService` | 0.0% (0/21) |
-| `AuthorizationServerInterceptor` | 0.0% (0/20) |
-| **total** | **30.9%** (396/1281 lines, 8.2% of 931 branches) |
+| **total** | **40.5%** (527/1301 lines, 10.7% of 945 branches) |
 
-The plant rules are covered from both ends: the model tests check what growing does to a plant, the
-service tests check who is allowed to do what and when, and the config tests check the cache in front of
-the database. Everything is mocked - repositories, Redis, config service, mappers - which is what makes
-the timing rules testable at all, since the countdown a completed plant waits for is just a timestamp a
-test can place on either side of now.
+Branch coverage is the lower number because most of what is left uncovered is branchier than what is
+covered: `GameService` and the gRPC layer, whose opcode switch is the next thing to take.
 
-### Fixed: the picking guard was the wrong way round
+The plant rules are covered from both ends: the model tests check what growing and waiting do to a plant
+and a can, the service tests check who is allowed to do what and when, and the config tests check the
+cache in front of the database. Everything in the service is mocked - repositories, Redis, the config
+service, the mappers - which is what makes the timing rules testable at all: the countdown a completed
+plant waits for and the five minutes between water are both timestamps, and a test can place them on
+whichever side of now it wants.
+
+### Fixed: the picking guard refused exactly when the time had come
 
 `pickingFruit` and `protectResource` both refused when `nextTimeToPick < now`, which is exactly when
 picking and protecting become allowed: a plant was pickable before its time and refused once the time had
 come. The error it answers with names the intended behaviour (`NOT_ALREADY_TIME_TO_PICKING_FRUIT`), and
-`addExp` sets the field to `now + countdown`, so the intended test is `nextTimeToPick > now`. The two
-tests that say so - one on each side of now - failed before the change and pass after it.
+`addExp` sets the field to `now + countdown`. The two tests that say so - one on each side of now - failed
+before the change and pass after it.
+
+### Fixed: the config checks asked the wrong question
+
+Four checks asked "is this plant allowed" with `contains(plantId - 1)`: three against
+`seedConfig.getData()`, which holds `SeedConfigData` objects, and one against `getFruitTimeCountdown()`,
+which holds countdown seconds. In each case the line immediately below indexes the same list with
+`get(plantId - 1)`, which is what the check exists to protect, so the question was always whether that
+position is there. Comparing a list of configs against an index can never be true, and comparing a list
+of countdowns against an index is true by accident at best, so every request was refused one line before
+the code it was meant to protect - and sowing, watering and picking were all unreachable. One helper,
+`isPlantInConfig`, now asks the question on behalf of all four.
+
+The tests that pinned the broken behaviour were deleted rather than kept; the tests that replaced them
+are the happy paths, which until now were not reachable.
+
+### Fixed: nothing ever put water in the watering can
+
+`UserWateringCanModel(userId)` starts at zero, `use()` only ever takes water out and stops at zero, and
+nothing else in this repository set a can's quantity - the opcodes are `PING` and the five plant
+operations, with nothing to fetch or buy water. So every spray a real player could send was refused with
+`NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER`, the plant never grew, and picking and protecting were states
+nothing inside this repository could bring a plant into.
+
+The rule is one water every five minutes, counted from `nextTimeToReset`, and `refill(nowSeconds)` is
+that rule. It returns how much it added, so a caller with nothing to write can skip the write. `getInfo`
+calls it too, because that is where the numbers a client displays come from, and `sprayWater` calls it
+before the check on the can rather than after - a player away for ten minutes arrives holding the two
+water that came back with the clock, and the check has to see them.
+
+The trap is the anchor: a can that has never been refilled carries `nextTimeToReset = 0`, and treating
+that as a timestamp would make `now - 0` around seventeen hundred million, or millions of water from a
+brand new can. Zero means the can has not started counting, so the first call only sets it. There is a
+test named after that, and it fails if anyone removes the special case.
 
 ### Found and not changed
 
-These are pinned by tests rather than fixed, because each one is a decision about behaviour that belongs
-to whoever owns the game, not to whoever writes the test. Every one of them is a way the plant feature
-can answer a client with the wrong thing, so they are worth a decision rather than a note.
-
-**The config check never passes.** `sowSeed`, `sprayWater` and `pickingFruit` all ask whether a plant id
-is allowed with `seedConfig.getData().contains(plantId - 1)`. That list holds `SeedConfigData` objects -
-the same list the rest of the code indexes with `get(plantId - 1)` - so comparing one against an `int`
-can never be true, and a request that passes every other check is still answered with
-`INVALID_RESOURCE`. Sowing, watering and picking are all unreachable behind it. The neighbouring check in
-`sprayWater` searches `fruitTimeCountdown`, which really is a `List<Integer>` and works, which is how you
-can tell the two apart.
-
-**A new watering can holds nothing and nothing fills it.** `UserWateringCanModel(userId)` starts at zero,
-`use()` only ever takes water out, and no code in this repository sets a can's quantity - the opcodes are
-`PING` and the five plant operations, with nothing to fetch or buy water. So every spray a real player can
-send is refused with `NOT_ENOUGH_QUANTITY_TO_SPRAY_WATER`, the plant never grows, and picking and
-protecting are states nothing inside this repository can reach.
+Each of these is a decision about behaviour rather than an obvious mistake, so they are pinned by tests
+and left for whoever owns the rules.
 
 **An unknown protect type is accepted.** `protectResource` switches on the type with no default, so a
-client that sends anything else gets `OK` and nothing happens. Harmless, but it answers a request it did
-not perform.
+client that sends anything else gets `OK` and nothing happens.
 
-**An empty season config throws.** The completion check on the model reads the last entry of the
-required-exp list, so a season config with no plants raises `IndexOutOfBounds` instead of refusing.
+**A malformed config throws instead of refusing.** The completion check reads the last entry of the
+required-exp list, so a season config with no plants raises `IndexOutOfBounds`; `pickingFruit` takes
+`rates.get(currentPlantId - 1)` and then `random.nextInt(rates.get(rates.size() - 1))`, so an inner rate
+list that is empty raises `IndexOutOfBounds` and one whose last entry is zero raises
+`IllegalArgumentException`. All three are config errors reaching a client as a crash rather than as an
+error code.
 
-Still to cover: `GameService`, whose opcode handling can be tested without a client.
+**Water has no ceiling.** Five minutes is one water with no maximum, so a week away is two thousand of
+them. A cap is a balance decision and needs a number.
+
+**Buying water is not in this repository.** The store the water can also come from is elsewhere: there is
+no opcode for it here and no `WATER` resource type in `GameEnum.Resource`. If the store is meant to fill
+this can, it is writing to the same row.
+
+Still to cover: `GameService`, whose opcode switch can be tested without a client.
